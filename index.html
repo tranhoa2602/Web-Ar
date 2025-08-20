@@ -53,7 +53,7 @@
 
       // --- Context AR ---
       const arContext = new THREEx.ArToolkitContext({
-        cameraParametersUrl: "data/camera_para.dat",
+        cameraParametersUrl: "camera_para.dat",
         detectionMode: "mono",
       });
 
@@ -67,7 +67,7 @@
 
       const markerControls = new THREEx.ArMarkerControls(arContext, markerRoot, {
         type: "pattern",
-        patternUrl: "data/hiro.patt",
+        patternUrl: "pattern-spider-man-logo.patt",
       });
 
       // --- Video texture ---
