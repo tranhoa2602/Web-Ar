@@ -46,16 +46,16 @@
 
       startButton.addEventListener("click", async () => {
         try {
-          // Xin quyền camera trước
+          // Xin quyền camera
           await navigator.mediaDevices.getUserMedia({ video: true });
 
-          // Play video texture
+          // Phát video texture (bắt buộc phải nằm trong gesture click)
           await video.play();
 
           // Ẩn nút sau khi đã xin quyền
           startButton.style.display = "none";
 
-          // Bắt đầu AR
+          // Khởi động AR
           startAR(video);
         } catch (err) {
           alert("Không thể truy cập camera: " + err);
