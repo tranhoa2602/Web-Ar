@@ -10,14 +10,29 @@
         margin: 0;
         overflow: hidden;
       }
+      #startButton {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 20px;
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        background: #222;
+        color: white;
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
-    <!-- Video để hiển thị (ẩn đi, chỉ dùng làm texture) -->
+    <!-- Nút Start (ẩn sau khi bấm) -->
+    <button id="startButton">▶ Start AR</button>
+
+    <!-- Video (ẩn đi, chỉ làm texture) -->
     <video
       id="video"
       src="BigBuckBunny.mp4"
-      autoplay
       loop
       muted
       playsinline
@@ -25,88 +40,98 @@
     ></video>
 
     <script>
-      // --- Scene, Camera, Renderer ---
-      const scene = new THREE.Scene();
-      const camera = new THREE.Camera();
-      scene.add(camera);
+      let started = false;
 
-      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-      renderer.setSize(window.innerWidth, window.innerHeight);
-      document.body.appendChild(renderer.domElement);
-
-      // --- Source webcam ---
-      const arSource = new THREEx.ArToolkitSource({
-        sourceType: "webcam",
+      document.getElementById("startButton").addEventListener("click", () => {
+        const video = document.getElementById("video");
+        video.play().then(() => {
+          document.getElementById("startButton").style.display = "none";
+          startAR(video); // bắt đầu AR sau khi video được play
+        });
       });
 
-      arSource.init(function () {
-        setTimeout(function () {
+      function startAR(video) {
+        // --- Scene, Camera, Renderer ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.Camera();
+        scene.add(camera);
+
+        const renderer = new THREE.WebGLRenderer({
+          antialias: true,
+          alpha: true,
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- Source webcam ---
+        const arSource = new THREEx.ArToolkitSource({
+          sourceType: "webcam",
+        });
+
+        arSource.init(function () {
+          setTimeout(function () {
+            arSource.onResizeElement();
+            arSource.copyElementSizeTo(renderer.domElement);
+          }, 2000);
+        });
+
+        window.addEventListener("resize", function () {
           arSource.onResizeElement();
           arSource.copyElementSizeTo(renderer.domElement);
-        }, 2000);
-      });
+        });
 
-      window.addEventListener("resize", function () {
-        arSource.onResizeElement();
-        arSource.copyElementSizeTo(renderer.domElement);
-      });
+        // --- Context AR ---
+        const arContext = new THREEx.ArToolkitContext({
+          cameraParametersUrl: "data/camera_para.dat",
+          detectionMode: "mono",
+        });
 
-      // --- Context AR ---
-      const arContext = new THREEx.ArToolkitContext({
-        cameraParametersUrl: "camera_para.dat",
-        detectionMode: "mono",
-      });
+        arContext.init(function () {
+          camera.projectionMatrix.copy(arContext.getProjectionMatrix());
+        });
 
-      arContext.init(function () {
-        camera.projectionMatrix.copy(arContext.getProjectionMatrix());
-      });
+        // --- Marker root ---
+        const markerRoot = new THREE.Group();
+        scene.add(markerRoot);
 
-      // --- Marker root ---
-      const markerRoot = new THREE.Group();
-      scene.add(markerRoot);
+        const markerControls = new THREEx.ArMarkerControls(
+          arContext,
+          markerRoot,
+          {
+            type: "pattern",
+            patternUrl: "pattern-spider-man-logo.patt",
+          }
+        );
 
-      const markerControls = new THREEx.ArMarkerControls(arContext, markerRoot, {
-        type: "pattern",
-        patternUrl: "pattern-spider-man-logo.patt",
-      });
+        // --- Video texture ---
+        const videoTexture = new THREE.VideoTexture(video);
+        videoTexture.minFilter = THREE.LinearFilter;
+        videoTexture.magFilter = THREE.LinearFilter;
+        videoTexture.format = THREE.RGBFormat;
 
-      // --- Video texture ---
-      const video = document.getElementById("video");
+        const geometry = new THREE.PlaneGeometry(1, 0.56); // plane tỉ lệ 16:9
+        const material = new THREE.MeshBasicMaterial({
+          map: videoTexture,
+          side: THREE.DoubleSide,
+        });
 
-      const videoTexture = new THREE.VideoTexture(video);
-      videoTexture.minFilter = THREE.LinearFilter;
-      videoTexture.magFilter = THREE.LinearFilter;
-      videoTexture.format = THREE.RGBFormat;
+        const videoMesh = new THREE.Mesh(geometry, material);
+        videoMesh.position.y = geometry.parameters.height / 2; // nâng lên khỏi marker
+        markerRoot.add(videoMesh);
 
-      const geometry = new THREE.PlaneGeometry(1, 0.56); // 16:9
-      const material = new THREE.MeshBasicMaterial({
-        map: videoTexture,
-        side: THREE.DoubleSide,
-      });
+        // --- Animation loop ---
+        function animate() {
+          requestAnimationFrame(animate);
 
-      const videoMesh = new THREE.Mesh(geometry, material);
-      videoMesh.position.y = geometry.parameters.height / 2;
-      markerRoot.add(videoMesh);
+          if (arSource.ready) {
+            arContext.update(arSource.domElement);
+          }
 
-      // --- Bắt sự kiện click để đảm bảo autoplay ---
-      document.body.addEventListener("click", () => {
-        if (video.paused) {
-          video.play();
-        }
-      });
-
-      // --- Animation loop ---
-      function animate() {
-        requestAnimationFrame(animate);
-
-        if (arSource.ready) {
-          arContext.update(arSource.domElement);
+          renderer.render(scene, camera);
         }
 
-        renderer.render(scene, camera);
+        animate();
       }
-
-      animate();
     </script>
   </body>
 </html>
