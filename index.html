@@ -22,14 +22,15 @@
         background: #222;
         color: white;
         cursor: pointer;
+        z-index: 10;
       }
     </style>
   </head>
   <body>
-    <!-- Nút Start (ẩn sau khi bấm) -->
+    <!-- Nút Start -->
     <button id="startButton">▶ Start AR</button>
 
-    <!-- Video (ẩn đi, chỉ làm texture) -->
+    <!-- Video texture -->
     <video
       id="video"
       src="BigBuckBunny.mp4"
@@ -40,14 +41,26 @@
     ></video>
 
     <script>
-      let started = false;
+      const startButton = document.getElementById("startButton");
+      const video = document.getElementById("video");
 
-      document.getElementById("startButton").addEventListener("click", () => {
-        const video = document.getElementById("video");
-        video.play().then(() => {
-          document.getElementById("startButton").style.display = "none";
-          startAR(video); // bắt đầu AR sau khi video được play
-        });
+      startButton.addEventListener("click", async () => {
+        try {
+          // Xin quyền camera trước
+          await navigator.mediaDevices.getUserMedia({ video: true });
+
+          // Play video texture
+          await video.play();
+
+          // Ẩn nút sau khi đã xin quyền
+          startButton.style.display = "none";
+
+          // Bắt đầu AR
+          startAR(video);
+        } catch (err) {
+          alert("Không thể truy cập camera: " + err);
+          console.error(err);
+        }
       });
 
       function startAR(video) {
@@ -68,14 +81,14 @@
           sourceType: "webcam",
         });
 
-        arSource.init(function () {
-          setTimeout(function () {
+        arSource.init(() => {
+          setTimeout(() => {
             arSource.onResizeElement();
             arSource.copyElementSizeTo(renderer.domElement);
           }, 2000);
         });
 
-        window.addEventListener("resize", function () {
+        window.addEventListener("resize", () => {
           arSource.onResizeElement();
           arSource.copyElementSizeTo(renderer.domElement);
         });
@@ -86,7 +99,7 @@
           detectionMode: "mono",
         });
 
-        arContext.init(function () {
+        arContext.init(() => {
           camera.projectionMatrix.copy(arContext.getProjectionMatrix());
         });
 
@@ -94,14 +107,10 @@
         const markerRoot = new THREE.Group();
         scene.add(markerRoot);
 
-        const markerControls = new THREEx.ArMarkerControls(
-          arContext,
-          markerRoot,
-          {
-            type: "pattern",
-            patternUrl: "pattern-spider-man-logo.patt",
-          }
-        );
+        new THREEx.ArMarkerControls(arContext, markerRoot, {
+          type: "pattern",
+          patternUrl: "pattern-spider-man-logo.patt",
+        });
 
         // --- Video texture ---
         const videoTexture = new THREE.VideoTexture(video);
@@ -109,14 +118,14 @@
         videoTexture.magFilter = THREE.LinearFilter;
         videoTexture.format = THREE.RGBFormat;
 
-        const geometry = new THREE.PlaneGeometry(1, 0.56); // plane tỉ lệ 16:9
+        const geometry = new THREE.PlaneGeometry(1, 0.56); // 16:9
         const material = new THREE.MeshBasicMaterial({
           map: videoTexture,
           side: THREE.DoubleSide,
         });
 
         const videoMesh = new THREE.Mesh(geometry, material);
-        videoMesh.position.y = geometry.parameters.height / 2; // nâng lên khỏi marker
+        videoMesh.position.y = geometry.parameters.height / 2;
         markerRoot.add(videoMesh);
 
         // --- Animation loop ---
