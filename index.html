@@ -1,118 +1,210 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>AR.js - 3D Model once detected</title>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.138.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r138/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/three.js/build/ar-threex.js"></script>
-    <style>
-      body {
-        margin: 0;
-        overflow: hidden;
+<head>
+  <meta charset="utf-8" />
+  <title>AR.js - 3D Model once detected</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Three.js + loaders -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.138.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.138.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.138.0/examples/js/loaders/DRACOLoader.js"></script>
+
+  <!-- AR.js (Three.js version) -->
+  <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/three.js/build/ar-threex.js"></script>
+
+  <style>
+    html, body { margin:0; overflow:hidden; background:#000; }
+    #startButton {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 18px; padding: 12px 20px;
+      border: none; border-radius: 10px;
+      background: #222; color: #fff; cursor: pointer; z-index: 5;
+      box-shadow: 0 6px 24px rgba(0,0,0,.3);
+    }
+    #hud {
+      position: absolute; left: 12px; bottom: 12px; z-index: 5;
+      padding: 8px 10px; background: rgba(0,0,0,.45); color: #fff; font: 12px/1.4 system-ui;
+      border-radius: 8px; max-width: 80vw; white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <button id="startButton">▶ Start AR</button>
+  <div id="hud">Log:</div>
+
+  <script>
+    const logEl = document.getElementById('hud');
+    const log = (...args) => {
+      console.log(...args);
+      logEl.textContent = 'Log:\n' + [logEl.textContent.replace(/^Log:\n?/, ''), args.map(a => String(a)).join(' ')].slice(-15).join('\n');
+    };
+
+    document.getElementById("startButton").addEventListener("click", async () => {
+      try {
+        // 1) Xin quyền camera trong user gesture (quan trọng trên mobile/https)
+        await navigator.mediaDevices.getUserMedia({ video: true });
+      } catch (e) {
+        alert("Không truy cập được camera. Kiểm tra HTTPS/permission.\n" + e);
+        return;
       }
-      #startButton {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        font-size: 20px;
-        padding: 12px 24px;
-        border: none;
-        border-radius: 8px;
-        background: #222;
-        color: white;
-        cursor: pointer;
-      }
-    </style>
-  </head>
-  <body>
-    <button id="startButton">▶ Start AR</button>
-    <script>
-      document.getElementById("startButton").addEventListener("click", () => {
-        document.getElementById("startButton").style.display = "none";
-        startAR();
-      });
+      // 2) Bắt đầu AR
+      document.getElementById("startButton").style.display = "none";
+      startAR();
+    });
 
-      function startAR() {
-        const scene = new THREE.Scene();
-        const camera = new THREE.Camera();
-        scene.add(camera);
+    function startAR() {
+      // --- Scene / Camera / Renderer
+      const scene = new THREE.Scene();
+      const camera = new THREE.Camera();
+      scene.add(camera);
 
-        const renderer = new THREE.WebGLRenderer({
-          antialias: true,
-          alpha: true,
-        });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.physicallyCorrectLights = true;
+      document.body.appendChild(renderer.domElement);
 
-        const arSource = new THREEx.ArToolkitSource({ sourceType: "webcam" });
-        arSource.init(() => {
-          setTimeout(() => {
-            arSource.onResizeElement();
-            arSource.copyElementSizeTo(renderer.domElement);
-          }, 2000);
-        });
+      // --- Lights (GLTF cần đèn mới thấy vật liệu PBR)
+      const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+      hemi.position.set(0, 1, 0);
+      scene.add(hemi);
 
-        window.addEventListener("resize", () => {
+      const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+      dir.position.set(1, 2, 1);
+      dir.castShadow = false;
+      scene.add(dir);
+
+      // --- AR Source (webcam)
+      const arSource = new THREEx.ArToolkitSource({ sourceType: "webcam" });
+      arSource.init(() => {
+        setTimeout(() => {
           arSource.onResizeElement();
           arSource.copyElementSizeTo(renderer.domElement);
-        });
+        }, 500);
+      });
+      window.addEventListener("resize", () => {
+        arSource.onResizeElement();
+        arSource.copyElementSizeTo(renderer.domElement);
+      });
 
-        const arContext = new THREEx.ArToolkitContext({
-          cameraParametersUrl: "camera_para.dat",
-          detectionMode: "mono",
-        });
-        arContext.init(() => {
-          camera.projectionMatrix.copy(arContext.getProjectionMatrix());
-        });
+      // --- AR Context
+      const arContext = new THREEx.ArToolkitContext({
+        // SỬA ĐƯỜNG DẪN NÀY CHO ĐÚNG VỚI DỰ ÁN CỦA BẠN
+        // Nếu để trong /data/ thì dùng "data/camera_para.dat"
+        // Nếu để cùng cấp index.html thì dùng "camera_para.dat"
+        cameraParametersUrl: "camera_para.dat",
+        detectionMode: "mono",
+      });
 
-        const markerRoot = new THREE.Group();
-        scene.add(markerRoot);
+      arContext.init(() => {
+        camera.projectionMatrix.copy(arContext.getProjectionMatrix());
+        log('AR context init OK');
+      });
 
-        new THREEx.ArMarkerControls(arContext, markerRoot, {
-          type: "pattern",
-          patternUrl: "pattern-spider-man-logo.patt",
-        });
+      // --- Marker
+      const markerRoot = new THREE.Group();
+      scene.add(markerRoot);
 
-        // Load GLTF model
-        const loader = new THREE.GLTFLoader();
-        let model, mixer;
-        let modelAdded = false;
-        const clock = new THREE.Clock();
+      new THREEx.ArMarkerControls(arContext, markerRoot, {
+        type: "pattern",
+        // SỬA ĐƯỜNG DẪN .patt CHO KHỚP
+        patternUrl: "pattern-spider-man-logo.patt",
+        // changeMatrixMode: 'modelViewMatrix' (mặc định) → markerRoot.visible sẽ được AR.js set.
+      });
 
-        loader.load("Gothic.glb", (gltf) => {
+      // Ẩn scene cho tới khi có marker hoặc đã “neo” model
+      scene.visible = false;
+
+      // --- Tải model GLB
+      const manager = new THREE.LoadingManager();
+      manager.onStart = () => log('Bắt đầu load Gothic.glb...');
+      manager.onLoad  = () => log('Load xong tất cả asset');
+      manager.onError = (url) => log('LỖI load:', url);
+
+      const loader = new THREE.GLTFLoader(manager);
+
+      // Bật DRACO nếu file GLB nén Draco (không hại gì nếu không nén)
+      const dracoLoader = new THREE.DRACOLoader(manager);
+      dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.138.0/examples/js/libs/draco/');
+      loader.setDRACOLoader(dracoLoader);
+
+      let model, mixer;
+      let pinned = false; // đã “neo” model ra khỏi marker chưa
+      const clock = new THREE.Clock();
+
+      loader.load(
+        "Gothic.glb",
+        (gltf) => {
           model = gltf.scene;
-          model.scale.set(0.5, 0.5, 0.5);
-          model.position.set(0, 0, 0);
+          // Fit model vào kích thước ~80% bề rộng marker (marker mặc định rộng ~1 đơn vị)
+          fitAndCenterModel(model, 0.8);
 
-          markerRoot.add(model);
-
+          // Nếu có animation
           if (gltf.animations && gltf.animations.length > 0) {
             mixer = new THREE.AnimationMixer(model);
             gltf.animations.forEach((clip) => mixer.clipAction(clip).play());
           }
-        });
 
-        function animate() {
-          requestAnimationFrame(animate);
-
-          if (arSource.ready) {
-            arContext.update(arSource.domElement);
+          markerRoot.add(model);
+          log('Model loaded & added to marker');
+        },
+        (xhr) => {
+          if (xhr.total) {
+            const p = (xhr.loaded / xhr.total * 100).toFixed(1);
+            log(`Loading model: ${p}%`);
           }
-
-          // Khi marker thấy lần đầu → gỡ model ra khỏi marker và thêm trực tiếp vào scene
-          if (markerRoot.visible && model && !modelAdded) {
-            scene.add(model);
-            modelAdded = true;
-          }
-
-          if (mixer) mixer.update(clock.getDelta());
-
-          renderer.render(scene, camera);
+        },
+        (err) => {
+          console.error(err);
+          alert("Không load được Gothic.glb. Kiểm tra đường dẫn/tệp trên Vercel.");
         }
-        animate();
+      );
+
+      // Fit & center helper
+      function fitAndCenterModel(object3d, targetSize = 1.0) {
+        const box = new THREE.Box3().setFromObject(object3d);
+        const size = new THREE.Vector3();
+        const center = new THREE.Vector3();
+        box.getSize(size);
+        box.getCenter(center);
+
+        // Đưa tâm model về (0,0,0)
+        object3d.position.sub(center);
+
+        // Tính scale để maxDimension = targetSize
+        const maxDim = Math.max(size.x, size.y, size.z) || 1;
+        const scale = targetSize / maxDim;
+        object3d.scale.multiplyScalar(scale);
+
+        // Nâng model hơi cao lên khỏi mặt marker (tùy chọn)
+        object3d.position.y += 0.001;
       }
-    </script>
-  </body>
+
+      // --- Render loop
+      (function animate() {
+        requestAnimationFrame(animate);
+
+        if (arSource.ready) arContext.update(arSource.domElement);
+
+        // Chỉ hiện cảnh khi marker thấy hoặc đã neo model
+        scene.visible = pinned || markerRoot.visible;
+
+        // Khi marker xuất hiện lần đầu → neo model ra khỏi marker (giữ nguyên world transform)
+        if (!pinned && markerRoot.visible && model) {
+          // attach() sẽ giữ nguyên world transform khi đổi parent
+          scene.attach(model);
+          pinned = true;
+          log('Model pinned (không phụ thuộc marker nữa)');
+        }
+
+        if (mixer) mixer.update(clock.getDelta());
+
+        renderer.render(scene, camera);
+      })();
+    }
+  </script>
+</body>
 </html>
