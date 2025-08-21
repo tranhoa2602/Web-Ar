@@ -2,8 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>AR.js Video on Marker</title>
+    <title>AR.js - 3D Model once detected</title>
     <script src="https://cdn.jsdelivr.net/npm/three@0.138.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r138/examples/js/loaders/GLTFLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/AR-js-org/AR.js/three.js/build/ar-threex.js"></script>
     <style>
       body {
@@ -22,49 +23,18 @@
         background: #222;
         color: white;
         cursor: pointer;
-        z-index: 10;
       }
     </style>
   </head>
   <body>
-    <!-- Nút Start -->
     <button id="startButton">▶ Start AR</button>
-
-    <!-- Video texture -->
-    <video
-      id="video"
-      src="BigBuckBunny.mp4"
-      loop
-      muted
-      playsinline
-      style="display: none"
-    ></video>
-
     <script>
-      const startButton = document.getElementById("startButton");
-      const video = document.getElementById("video");
-
-      startButton.addEventListener("click", async () => {
-        try {
-          // Xin quyền camera
-          await navigator.mediaDevices.getUserMedia({ video: true });
-
-          // Phát video texture (bắt buộc phải nằm trong gesture click)
-          await video.play();
-
-          // Ẩn nút sau khi đã xin quyền
-          startButton.style.display = "none";
-
-          // Khởi động AR
-          startAR(video);
-        } catch (err) {
-          alert("Không thể truy cập camera: " + err);
-          console.error(err);
-        }
+      document.getElementById("startButton").addEventListener("click", () => {
+        document.getElementById("startButton").style.display = "none";
+        startAR();
       });
 
-      function startAR(video) {
-        // --- Scene, Camera, Renderer ---
+      function startAR() {
         const scene = new THREE.Scene();
         const camera = new THREE.Camera();
         scene.add(camera);
@@ -76,11 +46,7 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
 
-        // --- Source webcam ---
-        const arSource = new THREEx.ArToolkitSource({
-          sourceType: "webcam",
-        });
-
+        const arSource = new THREEx.ArToolkitSource({ sourceType: "webcam" });
         arSource.init(() => {
           setTimeout(() => {
             arSource.onResizeElement();
@@ -93,17 +59,14 @@
           arSource.copyElementSizeTo(renderer.domElement);
         });
 
-        // --- Context AR ---
         const arContext = new THREEx.ArToolkitContext({
           cameraParametersUrl: "camera_para.dat",
           detectionMode: "mono",
         });
-
         arContext.init(() => {
           camera.projectionMatrix.copy(arContext.getProjectionMatrix());
         });
 
-        // --- Marker root ---
         const markerRoot = new THREE.Group();
         scene.add(markerRoot);
 
@@ -112,23 +75,25 @@
           patternUrl: "pattern-spider-man-logo.patt",
         });
 
-        // --- Video texture ---
-        const videoTexture = new THREE.VideoTexture(video);
-        videoTexture.minFilter = THREE.LinearFilter;
-        videoTexture.magFilter = THREE.LinearFilter;
-        videoTexture.format = THREE.RGBFormat;
+        // Load GLTF model
+        const loader = new THREE.GLTFLoader();
+        let model, mixer;
+        let modelAdded = false;
+        const clock = new THREE.Clock();
 
-        const geometry = new THREE.PlaneGeometry(1, 0.56); // 16:9
-        const material = new THREE.MeshBasicMaterial({
-          map: videoTexture,
-          side: THREE.DoubleSide,
+        loader.load("Gothic.glb", (gltf) => {
+          model = gltf.scene;
+          model.scale.set(0.5, 0.5, 0.5);
+          model.position.set(0, 0, 0);
+
+          markerRoot.add(model);
+
+          if (gltf.animations && gltf.animations.length > 0) {
+            mixer = new THREE.AnimationMixer(model);
+            gltf.animations.forEach((clip) => mixer.clipAction(clip).play());
+          }
         });
 
-        const videoMesh = new THREE.Mesh(geometry, material);
-        videoMesh.position.y = geometry.parameters.height / 2;
-        markerRoot.add(videoMesh);
-
-        // --- Animation loop ---
         function animate() {
           requestAnimationFrame(animate);
 
@@ -136,9 +101,16 @@
             arContext.update(arSource.domElement);
           }
 
+          // Khi marker thấy lần đầu → gỡ model ra khỏi marker và thêm trực tiếp vào scene
+          if (markerRoot.visible && model && !modelAdded) {
+            scene.add(model);
+            modelAdded = true;
+          }
+
+          if (mixer) mixer.update(clock.getDelta());
+
           renderer.render(scene, camera);
         }
-
         animate();
       }
     </script>
